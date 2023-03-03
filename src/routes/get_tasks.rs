@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::entities::task::{Entity as Task, self};
 
 
-use super::create_task::TaskBody;
 
 
 #[derive(Serialize)]
@@ -13,17 +12,18 @@ pub struct ResponseTask{
     id: i32,
     title: String,
     priority: Option<String>,
-    descritpion: Option<String>
+    description: Option<String>,
 }
 
 
 pub async fn get_task_by_id(
     Path(id): Path<i32>,
     Extension(db): Extension<DatabaseConnection>
-) -> Result<(StatusCode, Json<TaskBody>),(StatusCode, String)>{
+) -> Result<(StatusCode, Json<ResponseTask>),(StatusCode, String)>{
 
 
     let res = Task::find_by_id(id)
+    .filter(task::Column::DeletedAt.is_null())
     .one(&db)
     .await
     .map_err(|err|->(StatusCode, String){ 
@@ -32,10 +32,13 @@ pub async fn get_task_by_id(
 
     match res {
         Some(data)=>{
-            Ok((StatusCode::OK, Json(TaskBody{
+            Ok((StatusCode::OK, Json(ResponseTask{
+                id: data.id,
                 priority: data.priority,
                 title: data.title,
-                description: data.description
+                description: data.description,
+                
+
             })))
         },
         None=>{
@@ -52,7 +55,7 @@ pub struct TaskQueryParams{
 
 pub async fn get_task(Extension(db): Extension<DatabaseConnection>, Query(params): Query<TaskQueryParams>) -> Result<(StatusCode, Json<Vec<ResponseTask>>), (StatusCode, String)>{
     
-    let mut filter = Condition::all();//.add(task::Column::Priority.eq(params.priority).into_condition());
+    let mut filter = Condition::all().add(task::Column::DeletedAt.is_null());//.add(task::Column::Priority.eq(params.priority).into_condition());
 
     if let Some(priority) = params.priority{
         filter = if priority.is_empty(){
@@ -75,7 +78,7 @@ pub async fn get_task(Extension(db): Extension<DatabaseConnection>, Query(params
                                         id: db_task.id, 
                                         title: db_task.title, 
                                         priority: db_task.priority, 
-                                        descritpion: db_task.description }).collect();
+                                        description: db_task.description}).collect();
 
     
     if tasks.len() == 0 {
